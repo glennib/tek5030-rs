@@ -1,0 +1,11 @@
+[package]
+name = "lab_00"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+#build = "../build_common.rs"
+
+[dependencies]
+opencv = { version = "0.76.3", features = ["calib3d", "dnn", "features2d", "flann", "gapi", "highgui", "imgcodecs", "imgproc", "ml", "objdetect", "photo", "stitching", "video", "videoio"], default-features = false }

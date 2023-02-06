@@ -1,0 +1,6 @@
+[requires]
+ConanCargoWrapper/0.1
+opencv/4.5.5
+
+[generators]
+ConanCargoWrapper

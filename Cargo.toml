@@ -1,0 +1,9 @@
+[workspace]
+
+members = [
+    "opencv_env",
+    "lab_00",
+]
+
+[workspace.dependencies]
+
