@@ -1,9 +1,7 @@
 [workspace]
 
 members = [
-    "opencv_env",
+    "manage_opencv",
     "lab_00",
 ]
-
-[workspace.dependencies]
 
