@@ -1,5 +1,8 @@
 # tek5030 in Rust
 
+Currently, this is mostly an example of how to get Rust's [`opencv`](https://crates.io/crates/opencv) crate (which is
+bindings to OpenCV) to link to [Conan's OpenCV](https://conan.io/center/opencv).
+
 ## install dependencies
 
 I use Conan to install the OpenCV and other system dependencies. Additionally, to create the Cargo build script which
@@ -27,3 +30,7 @@ The provided [`justfile`](./justfile) glues this together.
 
 With the `OPENCV_*` environment variables now applied to `.cargo/config.toml`, Cargo will now build
 the [`opencv`](https://crates.io/crates/opencv) crate using Conan's OpenCV version.
+
+## lab_00
+
+Read camera input, output in a window.
