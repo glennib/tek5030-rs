@@ -2,7 +2,9 @@ use anyhow::Result;
 use clap::Parser;
 use std::fs::read_to_string;
 
+/// Parse conanbuildinfo.txt and output TOML-compatible lists
 #[derive(Debug, Parser)]
+#[command(about)]
 struct Cli {
     #[arg(help = "file of where to get the conan build information")]
     conan_build_info_file: String,
@@ -64,7 +66,8 @@ where
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let contents = read_to_string(cli.conan_build_info_file)?;
+    eprintln!("Parsing {}", cli.conan_build_info_file);
+    let contents = read_to_string(cli.conan_build_info_file).expect("should be able to read file");
     let contents = {
         contents
             .split_once("\n[USER_")

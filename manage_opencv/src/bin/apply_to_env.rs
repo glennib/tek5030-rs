@@ -7,9 +7,13 @@ use std::{
 };
 use toml::{map::Entry, Table, Value};
 
+/// Read TOML table and apply the key/values to the `env`-section of the provided Cargo config file.
 #[derive(Debug, Parser)]
+#[command(about)]
 struct Cli {
+    /// File to read TOML table from
     env_contents_toml_file: String,
+    /// .cargo/config.toml file to apply env variables to
     cargo_config_toml_file: String,
 }
 
@@ -85,7 +89,13 @@ fn main() {
         }
     }
 
+    let new_cargo_config_content = cargo_config.to_string();
+    let new_length = new_cargo_config_content.len();
     cargo_config_file
-        .write_all(cargo_config.to_string().as_bytes())
+        .write_all(new_cargo_config_content.as_bytes())
         .expect("should be able to write to file");
+    eprintln!(
+        "Wrote {new_length} characters to {}",
+        cli.cargo_config_toml_file
+    );
 }
