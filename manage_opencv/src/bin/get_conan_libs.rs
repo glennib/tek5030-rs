@@ -1,56 +1,64 @@
 use anyhow::Result;
 use clap::Parser;
-use std::collections::HashMap;
 use std::fs::read_to_string;
 
 #[derive(Debug, Parser)]
 struct Cli {
+    #[arg(help = "file of where to get the conan build information")]
     conan_build_info_file: String,
     #[arg(short = 'i', help = "variable to write the include directory list to")]
     include_dirs_var: Option<String>,
+    #[arg(long = "ai", help = "append these include directories")]
+    include_dirs_append: Vec<String>,
     #[arg(short = 'd', help = "variable to write the library directory list to")]
     lib_dirs_var: Option<String>,
+    #[arg(long = "ad", help = "append these library directories")]
+    lib_dirs_append: Vec<String>,
     #[arg(short = 'l', help = "variable to write the library list to")]
     libs_var: Option<String>,
+    #[arg(long = "al", help = "append these libraries")]
+    libs_append: Vec<String>,
     #[arg(short = 's', help = "include system libraries in libs_var")]
     include_system_libs: bool,
 }
 
-struct Section {
-    header: String,
-    contents: Vec<String>,
-}
+struct SectionContents(Vec<String>);
 
 const INCLUDE_DIRS_HEADER: &str = "includedirs";
 const LIB_DIRS_HEADER: &str = "libdirs";
 const LIBS_HEADER: &str = "libs";
 const SYSTEM_LIBS_HEADER: &str = "system_libs";
 
-fn get_header(section: &str) -> &str {
-    section
-        .lines()
-        .next()
-        .expect("input should have at least one line")
-        .strip_prefix('[')
-        .expect("header should start with [")
-        .strip_suffix(']')
-        .expect("header should end with ]")
-}
-
-impl Section {
-    fn from(s: &str) -> Self {
-        let header = get_header(s).into();
-        let contents = s
-            .lines()
-            .skip(1)
-            .filter_map(|s| if s.is_empty() { None } else { Some(s.into()) })
-            .collect();
-        Self { header, contents }
+impl SectionContents {
+    fn find(header: &str, haystack: &str) -> Option<Self> {
+        haystack
+            .split_once(&format!("[{header}]\n"))
+            .map(|(_, after)| {
+                let contents = after
+                    .lines()
+                    .take_while(|&line| !line.trim().is_empty() && !line.starts_with('['))
+                    .map(std::string::ToString::to_string)
+                    .collect();
+                Self(contents)
+            })
     }
 }
 
-fn header_is_interesting(header: &str, header_env_map: &HashMap<&str, String>) -> bool {
-    header_env_map.contains_key(header)
+fn print_variable<'a, S, A, Ap>(env: &str, sections: S, append: A) -> usize
+where
+    S: Iterator<Item = &'a SectionContents>,
+    A: Iterator<Item = &'a Ap>,
+    Ap: AsRef<str> + 'a,
+{
+    let contents: Vec<_> = sections
+        .flat_map(|s| s.0.iter())
+        .map(String::as_str)
+        .chain(append.map(AsRef::as_ref))
+        .collect();
+    let number_of_items = contents.len();
+    let contents = contents.join(",");
+    println!("{env} = \"{contents}\"");
+    number_of_items
 }
 
 fn main() -> Result<()> {
@@ -64,44 +72,46 @@ fn main() -> Result<()> {
             .0
     };
 
-    let map = {
-        let mut map = HashMap::new();
-        if let Some(e) = cli.include_dirs_var {
-            map.insert(INCLUDE_DIRS_HEADER, e);
-        }
-        if let Some(e) = cli.lib_dirs_var {
-            map.insert(LIB_DIRS_HEADER, e);
-        }
-        if let Some(e) = cli.libs_var {
-            map.insert(LIBS_HEADER, e);
-        }
-        map
+    let n_include_dirs = if let Some(var) = cli.include_dirs_var {
+        let section = SectionContents::find(INCLUDE_DIRS_HEADER, contents)
+            .unwrap_or_else(|| panic!("contents should include {INCLUDE_DIRS_HEADER} section"));
+        print_variable(
+            &var,
+            std::iter::once(&section),
+            cli.include_dirs_append.iter(),
+        )
+    } else {
+        0
     };
 
-    if map.is_empty() {
-        return Ok(());
-    }
+    let n_lib_dirs = if let Some(var) = cli.lib_dirs_var {
+        let section = SectionContents::find(LIB_DIRS_HEADER, contents)
+            .unwrap_or_else(|| panic!("contents should include {LIB_DIRS_HEADER} section"));
+        print_variable(&var, std::iter::once(&section), cli.lib_dirs_append.iter())
+    } else {
+        0
+    };
 
-    let sections = contents.split("\n\n").filter_map(|section| {
-        if section.is_empty() || !header_is_interesting(get_header(section), &map) {
-            None
-        } else {
-            Some(Section::from(section))
+    let n_libs = if let Some(var) = cli.libs_var {
+        let section = SectionContents::find(LIBS_HEADER, contents)
+            .unwrap_or_else(|| panic!("contents should include {LIBS_HEADER} section"));
+        let mut sections = vec![section];
+        if cli.include_system_libs {
+            let system = SectionContents::find(SYSTEM_LIBS_HEADER, contents)
+                .unwrap_or_else(|| panic!("contents should include {SYSTEM_LIBS_HEADER} section"));
+            sections.push(system);
         }
-    });
+        print_variable(&var, sections.iter(), cli.libs_append.iter())
+    } else {
+        0
+    };
 
-    let mut remaining = map.len();
-    for section in sections {
-        let env_name = map
-            .get(section.header.as_str())
-            .expect("map should contain this header");
-        let contents = section.contents.join(",");
-        println!("{env_name} = \"{contents}\"");
-        remaining -= 1;
-        if remaining == 0 {
-            break;
-        }
-    }
+    eprintln!(
+        "Registered \
+        {n_include_dirs} include directories, \
+        {n_lib_dirs} library directories, and \
+        {n_libs} libraries."
+    );
 
     Ok(())
 }

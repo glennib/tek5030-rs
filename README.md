@@ -3,22 +3,14 @@
 ## install dependencies
 
 I use Conan to install the OpenCV and other system dependencies.
-Additionally, to create the Cargo build script which performs linking, I use the [ConanCargoWrapper](https://github.com/lasote/conan-cargo-wrapper-generator) generator, which must be created manually:
+Additionally, to create the Cargo build script which performs linking, I parse the `conanbuildinfo.txt` to tell
+the `opencv` crate about link information.
+Shortcuts via [`justfile`](https://github.com/casey/just) are available.
+I use `alias j=just`.
 
 ```shell
-# cd ~
-git clone https://github.com/lasote/conan-cargo-wrapper-generator.git
-cd conan-cargo-wrapper-generator
-conan create . -bmissing
+j install # uses conan to install dependencies to the build directory
+j apply   # parses conanbuildinfo.txt and sets environments variable within the .cargo/config.toml env section
 ```
 
-Prior to building anything rusty, invoke the following from the workspace root:
-
-```shell
-conan install . -if build
-```
-
-Any crate in the workspace must have the following build script in their `Cargo.toml`:
-```toml
-build = "../build_common.rs"
-```
+_This is work in progress, since I have some trouble linking `libfreetype`._
