@@ -3,4 +3,5 @@
 members = [
     "manage_opencv",
     "lab_00",
+    "lab_00-native",
 ]
