@@ -8,23 +8,27 @@ use image::{ImageBuffer, Rgb};
 use nokhwa::{
     pixel_format::RgbFormat,
     utils::{CameraIndex, RequestedFormat, RequestedFormatType},
-    Camera,
+    Camera, NokhwaError,
 };
-use std::sync::mpsc::RecvTimeoutError;
-use std::time::{Duration, Instant};
 use simple_moving_average::SMA;
+use std::sync::mpsc::RecvTimeoutError;
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 
 type ColorImageBuffer = ImageBuffer<Rgb<u8>, Vec<u8>>;
 
-fn main() -> Result<()> {
-    let (mut stream, _shutdown) = create_camera_streamer(CameraIndex::Index(0));
+fn main() {
+    let (mut stream, _shutdown) = create_camera_streamer(CameraIndex::Index(4));
 
-    let stream = move || stream.latest().clone();
+    let stream = move || {
+        assert!(!stream.has_no_updater(), "stream has no updater");
+        stream.latest().clone()
+    };
 
-    setup_gui(stream)
+    setup_gui(stream);
 }
 
-fn setup_gui<ImageStreamFn, ToImageData>(stream: ImageStreamFn) -> Result<()>
+fn setup_gui<ImageStreamFn, ToImageData>(stream: ImageStreamFn)
 where
     ToImageData: Into<MyImageData> + Sized + 'static,
     ImageStreamFn: FnMut() -> Option<(ToImageData, Instant)> + 'static,
@@ -38,8 +42,6 @@ where
 
     eframe::run_native("Stream webcam", options, Box::new(|_| Box::new(app)))
         .expect("should be able to run eframe app");
-
-    Ok(())
 }
 
 fn create_camera_streamer(
@@ -55,30 +57,40 @@ fn create_camera_streamer(
     let (shutdown_sender, shutdown_receiver) = std::sync::mpsc::sync_channel(1);
 
     std::thread::spawn(move || {
-        const LIMIT: u32 = 1;
+        const LIMIT: u32 = 30;
         let mut fails = 0;
         let mut camera = Camera::new(index, requested).unwrap();
+        if !camera.is_stream_open() {
+            camera.open_stream().unwrap();
+        }
+        eprintln!("camera info:\n{}", camera.info());
         // let mut ma = simple_moving_average::SumTreeSMA::<_, f64, 10>::new();
         while let Err(RecvTimeoutError::Timeout) = shutdown_receiver.recv_timeout(Duration::ZERO) {
             // let begin = Instant::now();
-            if let Ok(rgb) = camera
+            match camera
                 .frame()
                 .and_then(|frame| frame.decode_image::<RgbFormat>())
             {
-                fails = 0;
-                if img_updater.update(Some((rgb, Instant::now()))).is_err() {
-                    break;
+                Ok(rgb) => {
+                    fails = 0;
+                    if img_updater.update(Some((rgb, Instant::now()))).is_err() {
+                        break;
+                    }
                 }
-            } else {
-                fails += 1;
-                if fails >= LIMIT {
-                    break;
+                Err(e) => {
+                    eprintln!("{e}");
+                    fails += 1;
+                    if fails >= LIMIT {
+                        break;
+                    }
+                    sleep(Duration::from_millis(100));
                 }
             }
             // let duration = begin.elapsed();
             // ma.add_sample(duration.as_secs_f64());
             // eprint!("fps: {}\n", 1. / ma.get_average());
         }
+        eprintln!("end of capture thread");
     });
 
     (img_receiver, shutdown_sender)
@@ -123,17 +135,18 @@ where
         let rgb = (self.image_stream)();
 
         CentralPanel::default().show(ctx, |ui| match rgb {
-            Some((image, stamp)) => {
+            Some((image, _stamp)) => {
                 let image = image.into().0;
                 let tex = ui
                     .ctx()
                     .load_texture("frame", image, TextureOptions::LINEAR);
                 ui.image(&tex, ui.available_size());
-                eprint!("age: {}\n", stamp.elapsed().as_millis());
+                // eprint!("age: {}\n", stamp.elapsed().as_millis());
             }
             None => {
                 ui.colored_label(ui.visuals().error_fg_color, "image stream returned nothing");
             }
         });
+        ctx.request_repaint();
     }
 }
