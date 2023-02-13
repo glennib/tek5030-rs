@@ -1,5 +1,5 @@
 [package]
-name = "lab_00"
+name = "lab_00-opencv-higui"
 version = "0.1.0"
 edition = "2021"
 

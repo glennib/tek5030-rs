@@ -6,12 +6,13 @@ use eframe::{
 };
 use image::imageops::{self, FilterType};
 use image::{GrayImage, RgbImage};
-use lab_00_native::{create_camera_stream, MyImageData};
+use lab_00_native_egui::{create_camera_stream, MyImageData};
 use nokhwa::utils::CameraIndex;
 use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone)]
 struct ImageProcessingConfiguration {
+    gray_before_scale: bool,
     scale: u32,
     scale_filter: FilterType,
     blur: f32,
@@ -20,16 +21,29 @@ struct ImageProcessingConfiguration {
 }
 
 impl ImageProcessingConfiguration {
+    #[allow(clippy::needless_pass_by_value)] // to conform with interface
     fn call(&self, image: RgbImage) -> GrayImage {
-        let image = imageops::resize(
-            &image,
-            image.width() / self.scale,
-            image.height() / self.scale,
-            FilterType::Nearest,
-        );
-        let image = imageops::grayscale(&image);
+        let image = if self.gray_before_scale {
+            let image = imageops::grayscale(&image);
+            imageops::resize(
+                &image,
+                image.width() / self.scale,
+                image.height() / self.scale,
+                self.scale_filter,
+            )
+        } else {
+            let image = imageops::resize(
+                &image,
+                image.width() / self.scale,
+                image.height() / self.scale,
+                self.scale_filter,
+            );
+            imageops::grayscale(&image)
+        };
         let image = imageproc::filter::gaussian_blur_f32(&image, self.blur);
         let image = imageproc::edges::canny(&image, self.canny_lo, self.canny_hi);
+
+        #[allow(clippy::let_and_return)] // to easily add operations
         image
     }
 }
@@ -37,6 +51,7 @@ impl ImageProcessingConfiguration {
 impl Default for ImageProcessingConfiguration {
     fn default() -> Self {
         Self {
+            gray_before_scale: false,
             scale: 4,
             scale_filter: FilterType::Nearest,
             blur: 4.,
@@ -54,7 +69,7 @@ fn main() {
 
     let processor = Arc::new(RwLock::new(ImageProcessingConfiguration::default()));
 
-    let stream_receiver = create_camera_stream(CameraIndex::Index(4), {
+    let stream_receiver = create_camera_stream(CameraIndex::Index(0), {
         let processor = processor.clone();
         move |img| processor.read().unwrap().call(img)
     });
@@ -76,7 +91,7 @@ fn main() {
 struct MyApp<ImageStreamFn, ToImageData>
 where
     ToImageData: Into<MyImageData> + Sized,
-    ImageStreamFn: FnMut() -> Option<ToImageData>,
+    ImageStreamFn: FnMut() -> Option<(ToImageData, f64)>,
 {
     // option_updater: Updater<O>,
     image_stream: ImageStreamFn,
@@ -86,7 +101,7 @@ where
 impl<ImageStreamFn, ToImageData> MyApp<ImageStreamFn, ToImageData>
 where
     ToImageData: Into<MyImageData> + Sized,
-    ImageStreamFn: FnMut() -> Option<ToImageData>,
+    ImageStreamFn: FnMut() -> Option<(ToImageData, f64)>,
 {
     fn new(
         image_stream: ImageStreamFn,
@@ -102,10 +117,11 @@ where
 impl<ImageStreamFn, ToImageData> App for MyApp<ImageStreamFn, ToImageData>
 where
     ToImageData: Into<MyImageData> + Sized,
-    ImageStreamFn: FnMut() -> Option<ToImageData>,
+    ImageStreamFn: FnMut() -> Option<(ToImageData, f64)>,
 {
     fn update(&mut self, ctx: &Context, epi_frame: &mut Frame) {
-        let rgb = (self.image_stream)();
+        let (rgb, fps) =
+            (self.image_stream)().map_or_else(|| (None, None), |(rgb, fps)| (Some(rgb), Some(fps)));
 
         let mut configuration = self.image_processing_configuration.read().unwrap().clone();
 
@@ -113,6 +129,12 @@ where
 
         SidePanel::left("Configure").show(ctx, |sidebar| {
             sidebar.spacing_mut().item_spacing.y = 10.;
+
+            changed |= sidebar
+                .checkbox(&mut configuration.gray_before_scale, "gray before scale")
+                .changed();
+
+            Separator::default().ui(sidebar);
 
             let slider = Slider::new(&mut configuration.scale, 1..=8)
                 .step_by(1.)
@@ -139,6 +161,7 @@ where
                 })
                 .response
                 .clicked();
+
             Separator::default().ui(sidebar);
 
             let slider = Slider::new(&mut configuration.blur, 1.0..=20.)
@@ -155,6 +178,11 @@ where
                 .step_by(1.)
                 .text("canny hi");
             changed |= sidebar.add(slider).changed();
+
+            if let Some(fps) = fps {
+                Separator::default().ui(sidebar);
+                sidebar.label(format!("{fps:.1}"));
+            }
         });
 
         if changed {

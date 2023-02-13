@@ -1583,14 +1583,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
-name = "lab_00"
-version = "0.1.0"
-dependencies = [
- "opencv",
-]
-
-[[package]]
-name = "lab_00-native"
+name = "lab_00-native-egui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1603,6 +1596,13 @@ dependencies = [
  "simple_moving_average",
  "single_value_channel",
  "tracing",
+]
+
+[[package]]
+name = "lab_00-opencv-higui"
+version = "0.1.0"
+dependencies = [
+ "opencv",
 ]
 
 [[package]]

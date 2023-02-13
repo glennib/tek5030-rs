@@ -7,13 +7,16 @@ use nokhwa::{
 };
 use single_value_channel::{channel, Receiver};
 use std::thread;
+use std::time::Instant;
 use tracing::{debug, error};
+
+pub type VectorImageBuffer<P> = ImageBuffer<P, Vec<u8>>;
 
 #[must_use]
 pub fn create_camera_stream<F, P>(
     index: CameraIndex,
     process: F,
-) -> Receiver<Option<ImageBuffer<P, Vec<u8>>>>
+) -> Receiver<Option<(VectorImageBuffer<P>, f64)>>
 where
     F: Fn(RgbImage) -> ImageBuffer<P, Vec<u8>> + Sized + Send + 'static,
     P: Pixel + Send + 'static,
@@ -37,6 +40,10 @@ where
             let info = camera.info();
             debug!(?info, "opened camera");
         }
+
+        let mut sm_fps = simple_moving_average::SumTreeSMA::<_, f64, 5>::new();
+        let mut previous = None;
+
         loop {
             match camera
                 .frame()
@@ -44,7 +51,18 @@ where
             {
                 Ok(frame) => {
                     let frame = process(frame);
-                    if img_updater.update(Some(frame)).is_err() {
+
+                    let now = Instant::now();
+                    let fps = if let Some(previous) = previous {
+                        let fps = 1. / now.duration_since(previous).as_secs_f64();
+                        sm_fps.add_sample(fps);
+                        fps
+                    } else {
+                        0.
+                    };
+                    previous = Some(now);
+
+                    if img_updater.update(Some((frame, fps))).is_err() {
                         debug!("image receiver dropped");
                         break;
                     }
@@ -89,6 +107,7 @@ impl From<GrayImage> for MyImageData {
 }
 
 use lazy_static::lazy_static;
+use simple_moving_average::SMA;
 
 lazy_static! {
     static ref PALETTE: [(u8, u8, u8); 256] = {
