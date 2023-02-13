@@ -4,4 +4,5 @@ members = [
     "manage_opencv",
     "lab_00-opencv-higui",
     "lab_00-native-egui",
+    "common",
 ]
