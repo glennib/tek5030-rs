@@ -14,5 +14,4 @@ imageproc = "0.23.0"
 lazy_static = "1.4.0"
 nokhwa = { version = "0.10.3", features = ["input-native"] }
 simple_moving_average = "0.1.2"
-single_value_channel = "1.2.2"
 tracing = "0.1.37"

@@ -5,9 +5,7 @@ use nokhwa::{
     utils::{CameraIndex, RequestedFormat, RequestedFormatType},
     Camera,
 };
-use single_value_channel::{channel, Receiver};
-use std::thread;
-use std::time::Instant;
+use std::{sync::mpsc, thread, time::Instant};
 use tracing::{debug, error};
 
 pub type VectorImageBuffer<P> = ImageBuffer<P, Vec<u8>>;
@@ -16,12 +14,12 @@ pub type VectorImageBuffer<P> = ImageBuffer<P, Vec<u8>>;
 pub fn create_camera_stream<F, P>(
     index: CameraIndex,
     process: F,
-) -> Receiver<Option<(VectorImageBuffer<P>, f64)>>
+) -> mpsc::Receiver<(VectorImageBuffer<P>, f64)>
 where
     F: Fn(RgbImage) -> ImageBuffer<P, Vec<u8>> + Sized + Send + 'static,
     P: Pixel + Send + 'static,
 {
-    let (img_receiver, img_updater) = channel();
+    let (img_sender, img_receiver) = mpsc::sync_channel(2);
 
     thread::spawn(move || {
         const ERROR_LIMIT: u32 = 30;
@@ -62,7 +60,7 @@ where
                     };
                     previous = Some(now);
 
-                    if img_updater.update(Some((frame, fps))).is_err() {
+                    if img_sender.send((frame, fps)).is_err() {
                         debug!("image receiver dropped");
                         break;
                     }

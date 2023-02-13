@@ -1,4 +1,4 @@
-use eframe::egui::Key;
+use eframe::egui::{ImageData, Key};
 use eframe::egui::{Separator, Widget};
 use eframe::{
     egui::{self, CentralPanel, ComboBox, Context, SidePanel, Slider, TextureOptions},
@@ -8,7 +8,7 @@ use image::imageops::{self, FilterType};
 use image::{GrayImage, RgbImage};
 use lab_00_native_egui::{create_camera_stream, MyImageData};
 use nokhwa::utils::CameraIndex;
-use std::sync::{Arc, RwLock};
+use std::sync::{mpsc, Arc, RwLock};
 
 #[derive(Debug, Clone)]
 struct ImageProcessingConfiguration {
@@ -75,10 +75,12 @@ fn main() {
     });
 
     let stream = {
-        let mut stream_receiver = stream_receiver;
-        move || {
-            assert!(!stream_receiver.has_no_updater(), "stream has no updater");
-            stream_receiver.latest().clone()
+        move || match stream_receiver.try_recv() {
+            Ok(img) => Some(img),
+            Err(mpsc::TryRecvError::Disconnected) => {
+                panic!("stream has no updater");
+            }
+            _ => None,
         }
     };
 
@@ -95,6 +97,8 @@ where
 {
     // option_updater: Updater<O>,
     image_stream: ImageStreamFn,
+    latest_image: Option<ImageData>,
+    latest_fps: f64,
     image_processing_configuration: Arc<RwLock<ImageProcessingConfiguration>>,
 }
 
@@ -109,6 +113,8 @@ where
     ) -> Self {
         Self {
             image_stream,
+            latest_image: None,
+            latest_fps: 0.,
             image_processing_configuration,
         }
     }
@@ -180,9 +186,11 @@ where
             changed |= sidebar.add(slider).changed();
 
             if let Some(fps) = fps {
-                Separator::default().ui(sidebar);
-                sidebar.label(format!("{fps:.1}"));
+                self.latest_fps = fps;
             }
+
+            Separator::default().ui(sidebar);
+            sidebar.label(format!("{:.1}", self.latest_fps));
         });
 
         if changed {
@@ -193,13 +201,17 @@ where
                 .clone_from(&configuration);
         }
 
-        CentralPanel::default().show(ctx, |image_draw_area| match rgb {
+        if let Some(image) = rgb {
+            self.latest_image = Some(image.into().0);
+        }
+
+        CentralPanel::default().show(ctx, |image_draw_area| match &self.latest_image {
             Some(image) => {
-                let image = image.into().0;
-                let tex =
-                    image_draw_area
-                        .ctx()
-                        .load_texture("frame", image, TextureOptions::LINEAR);
+                let tex = image_draw_area.ctx().load_texture(
+                    "frame",
+                    image.clone(),
+                    TextureOptions::LINEAR,
+                );
                 image_draw_area.image(&tex, image_draw_area.available_size());
             }
             None => {
