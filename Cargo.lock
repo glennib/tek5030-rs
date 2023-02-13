@@ -1598,9 +1598,11 @@ dependencies = [
  "egui_extras",
  "image",
  "imageproc",
+ "lazy_static",
  "nokhwa",
  "simple_moving_average",
  "single_value_channel",
+ "tracing",
 ]
 
 [[package]]
