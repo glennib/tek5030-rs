@@ -69,7 +69,7 @@ impl ImageBuffer {
 }
 
 fn main() -> opencv::Result<()> {
-    let camera_index = 4;
+    let camera_index = 0;
     let window = "video capture";
     highgui::named_window(window, highgui::WINDOW_GUI_NORMAL)?;
     let mut cam = videoio::VideoCapture::new(camera_index, videoio::CAP_ANY)?;
