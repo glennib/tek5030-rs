@@ -1,5 +1,5 @@
 pub mod cam {
-    use image::{ImageBuffer, Pixel, RgbImage};
+    use image::{ImageBuffer, RgbImage};
     use nokhwa::{
         pixel_format::RgbFormat,
         utils::{CameraIndex, RequestedFormat, RequestedFormatType},
@@ -12,13 +12,16 @@ pub mod cam {
     pub type VectorImageBuffer<P> = ImageBuffer<P, Vec<u8>>;
 
     #[must_use]
-    pub fn create_camera_stream<F, P>(
-        index: CameraIndex,
-        process: F,
-    ) -> mpsc::Receiver<VectorImageBuffer<P>>
+    pub fn create_camera_stream_identity(index: CameraIndex) -> mpsc::Receiver<RgbImage> {
+        let process = |img| img;
+        create_camera_stream::<_, RgbImage>(index, process)
+    }
+
+    #[must_use]
+    pub fn create_camera_stream<F, I>(index: CameraIndex, process: F) -> mpsc::Receiver<I>
     where
-        F: Fn(RgbImage) -> ImageBuffer<P, Vec<u8>> + Sized + Send + 'static,
-        P: Pixel + Send + 'static,
+        F: Fn(RgbImage) -> I + Sized + Send + 'static,
+        I: Send + 'static,
     {
         let (img_sender, img_receiver) = mpsc::sync_channel(2);
 
