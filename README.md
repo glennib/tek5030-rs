@@ -31,6 +31,13 @@ The provided [`justfile`](./justfile) glues this together.
 With the `OPENCV_*` environment variables now applied to `.cargo/config.toml`, Cargo will now build
 the [`opencv`](https://crates.io/crates/opencv) crate using Conan's OpenCV version.
 
-## lab_00
+## lab_00-opencv-higui
 
 Read camera input, output in a window.
+Do everything with the `opencv` library.
+
+## lab_00-native-egui
+
+Read camera input, do processing, show in a window.
+Do everything with Rust-native libraries (`imageproc`, `image`, `cv`).
+Show in the Rust-native GUI `egui`.
