@@ -1,3 +1,4 @@
+use anyhow::Result;
 use common::cam::{create_camera_stream, CameraIndex};
 use eframe::egui::{CentralPanel, Context, ImageData, Key, SidePanel, Slider, TextureOptions};
 use eframe::{egui, App, Frame};
@@ -128,7 +129,7 @@ impl Default for ImageProcessingConfiguration {
 ///
 /// # Arguments
 ///
-/// * `image`: RgbImage
+/// * `image`: `RgbImage`
 ///
 /// returns: Result<Mat, Error>
 ///
@@ -159,7 +160,7 @@ pub fn to_mat(mut image: RgbImage) -> Result<Mat, opencv::Error> {
 }
 
 impl ImageProcessingConfiguration {
-    fn call(&self, image: RgbImage) -> ImageData {
+    fn call(&self, image: RgbImage) -> Result<ImageData> {
         let mat = to_mat(image).expect("RgbImage should be convertible to Mat");
 
         // Do processing here
@@ -169,11 +170,10 @@ impl ImageProcessingConfiguration {
                 &mat,
                 &mut out,
                 opencv::core::Size::new(0, 0),
-                f64::from(self.blur),
-                f64::from(self.blur),
+                self.blur,
+                self.blur,
                 opencv::core::BORDER_REFLECT,
-            )
-            .unwrap();
+            )?;
             out
         };
 
@@ -185,7 +185,7 @@ impl ImageProcessingConfiguration {
         };
 
         // convert to image data here
-        MyImageData::from(mat).0
+        Ok(MyImageData::from(mat).0)
     }
 }
 
@@ -198,7 +198,7 @@ fn main() {
 
     let camera_stream_receiver = create_camera_stream(CameraIndex::Index(0), {
         let processor = processor.clone();
-        move |img| processor.read().unwrap().call(img)
+        move |img| processor.read().unwrap().call(img).unwrap()
     });
 
     let stream = {
