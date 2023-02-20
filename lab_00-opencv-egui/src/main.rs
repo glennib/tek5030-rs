@@ -6,7 +6,10 @@ use eframe::{
 };
 use image::RgbImage;
 use lab_00_opencv_egui::{to_mat, MyImageData};
-use opencv::core::Mat;
+use opencv::{
+    core::{Mat, Size},
+    imgproc::{self},
+};
 use std::sync::{mpsc::TryRecvError, Arc, RwLock};
 
 struct MyApp<ImageStreamFn>
@@ -44,12 +47,12 @@ where
         }
 
         SidePanel::left("Configure").show(ctx, |sidebar| {
-            let configuration = self
+            let changed_configuration = self
                 .image_processing_configuration
                 .read()
                 .unwrap()
                 .draw(sidebar);
-            if let Some(configuration) = configuration {
+            if let Some(configuration) = changed_configuration {
                 self.image_processing_configuration
                     .write()
                     .unwrap()
@@ -87,7 +90,9 @@ where
 
 #[derive(Debug, Clone)]
 struct ImageProcessingConfiguration {
-    blur: f64,
+    blur: bool,
+    blur_sigma: f64,
+    canny: bool,
     canny_low: f64,
     canny_high: f64,
 }
@@ -95,7 +100,9 @@ struct ImageProcessingConfiguration {
 impl Default for ImageProcessingConfiguration {
     fn default() -> Self {
         Self {
-            blur: 1.,
+            blur: false,
+            blur_sigma: 1.,
+            canny: false,
             canny_low: 10.,
             canny_high: 15.,
         }
@@ -103,70 +110,91 @@ impl Default for ImageProcessingConfiguration {
 }
 
 impl ImageProcessingConfiguration {
-    fn process(&self, image: RgbImage) -> Result<ImageData> {
-        let mat = to_mat(image).expect("RgbImage should be convertible to Mat");
-
-        // Do processing here
-        let mat = {
-            let mut out = Mat::default();
-            opencv::imgproc::gaussian_blur(
-                &mat,
-                &mut out,
-                opencv::core::Size::new(0, 0),
-                self.blur,
-                self.blur,
-                opencv::core::BORDER_REFLECT,
-            )?;
-            out
-        };
-
-        let mat = {
-            let mut out = Mat::default();
-            opencv::imgproc::canny(&mat, &mut out, self.canny_low, self.canny_high, 3, false)
-                .unwrap();
-            out
-        };
-
-        // convert to image data here
-        Ok(MyImageData::from(mat).0)
-    }
-
+    /// Draws the parameter configuration GUI elements on the provided ui element, and returns
+    /// Some(Self) if the user changed the options.
+    ///
+    /// # Arguments
+    ///
+    /// * `ui`: egui element to draw on
+    ///
+    /// returns: Option<ImageProcessingConfiguration>
     fn draw(&self, ui: &mut egui::Ui) -> Option<Self> {
         let mut configuration = self.clone();
         let mut changed = false;
 
         ui.spacing_mut().item_spacing.y = 10.;
 
-        changed |= ui
-            .add(
-                Slider::new(&mut configuration.blur, 1.0..=10.0)
-                    .step_by(1.)
-                    .text("blur"),
-            )
-            .changed();
+        changed |= ui.checkbox(&mut configuration.blur, "blur").changed();
 
-        changed |= ui
-            .add(
-                Slider::new(&mut configuration.canny_low, 1.0..=configuration.canny_high)
-                    .step_by(0.5)
-                    .text("canny low"),
-            )
-            .changed();
-        changed |= ui
-            .add(
-                Slider::new(&mut configuration.canny_high, configuration.canny_low..=50.)
-                    .step_by(0.5)
-                    .text("canny high"),
-            )
-            .changed();
+        if configuration.blur {
+            changed |= ui
+                .add(
+                    Slider::new(&mut configuration.blur_sigma, 1.0..=10.)
+                        .step_by(1.)
+                        .text("sigma"),
+                )
+                .changed();
+        }
+
+        changed |= ui.checkbox(&mut configuration.canny, "canny").changed();
+
+        if configuration.canny {
+            changed |= ui
+                .add(
+                    Slider::new(&mut configuration.canny_low, 1.0..=configuration.canny_high)
+                        .step_by(0.5)
+                        .text("low"),
+                )
+                .changed();
+            changed |= ui
+                .add(
+                    Slider::new(&mut configuration.canny_high, configuration.canny_low..=50.)
+                        .step_by(0.5)
+                        .text("high"),
+                )
+                .changed();
+        }
 
         changed.then_some(configuration)
+    }
+
+    /// Processing pipeline which converts an `image::RgbImage` to an `egui::ImageData`.
+    fn process(&self, image: RgbImage) -> Result<ImageData> {
+        let mat = to_mat(image).expect("RgbImage should be convertible to Mat");
+
+        // Do processing here
+        let mat = if self.blur {
+            let mut out = Mat::default();
+            imgproc::gaussian_blur(
+                &mat,
+                &mut out,
+                Size::new(0, 0),
+                self.blur_sigma,
+                self.blur_sigma,
+                opencv::core::BORDER_REFLECT,
+            )?;
+            out
+        } else {
+            mat
+        };
+
+        let mat = if self.canny {
+            let mut out = Mat::default();
+            imgproc::canny(&mat, &mut out, self.canny_low, self.canny_high, 3, false)?;
+            out
+        } else {
+            mat
+        };
+
+        // convert to image data here
+        Ok(MyImageData::from(mat).0)
     }
 }
 
 fn main() {
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(800., 600.)),
+
         ..Default::default()
     };
     let processor = Arc::new(RwLock::new(ImageProcessingConfiguration::default()));
