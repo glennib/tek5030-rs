@@ -41,3 +41,8 @@ Do everything with the `opencv` library.
 Read camera input, do processing, show in a window.
 Do everything with Rust-native libraries (`imageproc`, `image`, `cv`).
 Show in the Rust-native GUI `egui`.
+
+## lab_00-opencv-egui
+
+highgui is crappy and native Rust CV is super slow, so this is the "best of both worlds".
+egui for GUI and OpenCV for image processing.
