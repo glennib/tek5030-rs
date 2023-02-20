@@ -3,4 +3,4 @@ opencv/4.5.5
 
 [options]
 freetype:with_brotli=False  # freetype is not able to find brotli even though it is in the conan dependency chain
-opencv:with_v4l=True
+opencv:with_v4l=False

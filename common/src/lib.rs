@@ -1,12 +1,12 @@
 pub mod cam {
     use image::{ImageBuffer, RgbImage};
+    pub use nokhwa::utils::CameraIndex;
     use nokhwa::{
         pixel_format::RgbFormat,
-        utils::{CameraIndex, RequestedFormat, RequestedFormatType},
+        utils::{RequestedFormat, RequestedFormatType},
         Camera,
     };
-    use std::sync::mpsc;
-    use std::thread;
+    use std::{sync::mpsc, thread};
     use tracing::{debug, error};
 
     pub type VectorImageBuffer<P> = ImageBuffer<P, Vec<u8>>;
