@@ -1,12 +1,13 @@
 use anyhow::Result;
 use common::cam::{create_camera_stream, CameraIndex};
-use eframe::egui::{CentralPanel, Context, ImageData, Key, SidePanel, Slider, TextureOptions};
-use eframe::{egui, App, Frame};
+use eframe::{
+    egui::{self, CentralPanel, Context, ImageData, Key, SidePanel, Slider, TextureOptions},
+    App, Frame,
+};
 use image::RgbImage;
-use lab_00_opencv_egui::MyImageData;
-use opencv::core::{Mat, MatTraitConst};
-use std::sync::mpsc::TryRecvError;
-use std::sync::{Arc, RwLock};
+use lab_00_opencv_egui::{to_mat, MyImageData};
+use opencv::core::Mat;
+use std::sync::{mpsc::TryRecvError, Arc, RwLock};
 
 struct MyApp<ImageStreamFn>
 where
@@ -42,43 +43,19 @@ where
             self.latest_image = Some(image);
         }
 
-        let mut configuration = self.image_processing_configuration.read().unwrap().clone();
-
-        let mut configuration_changed = false;
-
         SidePanel::left("Configure").show(ctx, |sidebar| {
-            sidebar.spacing_mut().item_spacing.y = 10.;
-
-            configuration_changed |= sidebar
-                .add(
-                    Slider::new(&mut configuration.blur, 1.0..=10.0)
-                        .step_by(1.)
-                        .text("blur"),
-                )
-                .changed();
-
-            configuration_changed |= sidebar
-                .add(
-                    Slider::new(&mut configuration.canny_low, 1.0..=configuration.canny_high)
-                        .step_by(0.5)
-                        .text("canny low"),
-                )
-                .changed();
-            configuration_changed |= sidebar
-                .add(
-                    Slider::new(&mut configuration.canny_high, configuration.canny_low..=50.)
-                        .step_by(0.5)
-                        .text("canny high"),
-                )
-                .changed();
-        });
-
-        if configuration_changed {
-            self.image_processing_configuration
-                .write()
+            let configuration = self
+                .image_processing_configuration
+                .read()
                 .unwrap()
-                .clone_from(&configuration);
-        }
+                .draw(sidebar);
+            if let Some(configuration) = configuration {
+                self.image_processing_configuration
+                    .write()
+                    .unwrap()
+                    .clone_from(&configuration);
+            }
+        });
 
         CentralPanel::default().show(ctx, |image_draw_area| {
             if let Some(ref image) = self.latest_image {
@@ -125,42 +102,8 @@ impl Default for ImageProcessingConfiguration {
     }
 }
 
-/// Turns an `image::RgbImage` into an `opencv::core::Mat`
-///
-/// # Arguments
-///
-/// * `image`: `RgbImage`
-///
-/// returns: Result<Mat, Error>
-///
-/// # Errors
-///
-/// * `opencv::Error` if constructing or copying Mats fails.
-///
-/// ```
-pub fn to_mat(mut image: RgbImage) -> Result<Mat, opencv::Error> {
-    let data = image.as_mut_ptr();
-    let step = opencv::core::Mat_AUTO_STEP;
-    let mat = unsafe {
-        // SAFETY
-        // The Mat from this block references the owned image, which is dropped at the end of the
-        // function. Before the drop, the data pointed to by this Mat is cloned to an owning Mat,
-        // which makes it safe.
-        Mat::new_rows_cols_with_data(
-            i32::try_from(image.height()).expect("image size should fit in an i32"),
-            i32::try_from(image.width()).expect("image size should fit in an i32"),
-            opencv::core::CV_8UC3,
-            data.cast::<std::ffi::c_void>(),
-            step,
-        )?
-    };
-    let mut out = Mat::default();
-    mat.copy_to(&mut out)?;
-    Ok(out)
-}
-
 impl ImageProcessingConfiguration {
-    fn call(&self, image: RgbImage) -> Result<ImageData> {
+    fn process(&self, image: RgbImage) -> Result<ImageData> {
         let mat = to_mat(image).expect("RgbImage should be convertible to Mat");
 
         // Do processing here
@@ -187,6 +130,38 @@ impl ImageProcessingConfiguration {
         // convert to image data here
         Ok(MyImageData::from(mat).0)
     }
+
+    fn draw(&self, ui: &mut egui::Ui) -> Option<Self> {
+        let mut configuration = self.clone();
+        let mut changed = false;
+
+        ui.spacing_mut().item_spacing.y = 10.;
+
+        changed |= ui
+            .add(
+                Slider::new(&mut configuration.blur, 1.0..=10.0)
+                    .step_by(1.)
+                    .text("blur"),
+            )
+            .changed();
+
+        changed |= ui
+            .add(
+                Slider::new(&mut configuration.canny_low, 1.0..=configuration.canny_high)
+                    .step_by(0.5)
+                    .text("canny low"),
+            )
+            .changed();
+        changed |= ui
+            .add(
+                Slider::new(&mut configuration.canny_high, configuration.canny_low..=50.)
+                    .step_by(0.5)
+                    .text("canny high"),
+            )
+            .changed();
+
+        changed.then_some(configuration)
+    }
 }
 
 fn main() {
@@ -196,14 +171,14 @@ fn main() {
     };
     let processor = Arc::new(RwLock::new(ImageProcessingConfiguration::default()));
 
-    let camera_stream_receiver = create_camera_stream(CameraIndex::Index(0), {
+    let camera_stream_receiver = create_camera_stream(CameraIndex::Index(4), {
         let processor = processor.clone();
-        move |img| processor.read().unwrap().call(img).unwrap()
+        move |img| processor.read().unwrap().process(img).ok()
     });
 
     let stream = {
         move || match camera_stream_receiver.try_recv() {
-            Ok(img) => Some(img),
+            Ok(img) => img,
             Err(TryRecvError::Disconnected) => {
                 panic!("stream has no updater")
             }
