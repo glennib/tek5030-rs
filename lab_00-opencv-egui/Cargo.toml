@@ -1,0 +1,16 @@
+[package]
+name = "lab_00-opencv-egui"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.69"
+common = { version = "0.1.0", path = "../common" }
+eframe = "0.21.0"
+egui_extras = { version = "0.21.0", features = ["image"] }
+image = "0.24.5"
+imageproc = "0.23.0"
+opencv = { version = "0.77.0", features = ["calib3d", "dnn", "features2d", "flann", "gapi", "imgcodecs", "imgproc", "ml", "objdetect", "photo", "stitching"], default-features = false }
+tracing = "0.1.37"
