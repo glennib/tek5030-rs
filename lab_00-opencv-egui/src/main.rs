@@ -12,82 +12,6 @@ use opencv::{
 };
 use std::sync::{mpsc::TryRecvError, Arc, RwLock};
 
-struct MyApp<ImageStreamFn>
-where
-    ImageStreamFn: FnMut() -> Option<ImageData>,
-{
-    image_stream: ImageStreamFn,
-    latest_image: Option<ImageData>,
-    image_processing_configuration: Arc<RwLock<ImageProcessingConfiguration>>,
-}
-
-impl<ImageStreamFn> MyApp<ImageStreamFn>
-where
-    ImageStreamFn: FnMut() -> Option<ImageData>,
-{
-    fn new(
-        image_stream: ImageStreamFn,
-        image_processing_configuration: Arc<RwLock<ImageProcessingConfiguration>>,
-    ) -> Self {
-        Self {
-            image_stream,
-            latest_image: None,
-            image_processing_configuration,
-        }
-    }
-}
-
-impl<ImageStreamFn> App for MyApp<ImageStreamFn>
-where
-    ImageStreamFn: FnMut() -> Option<ImageData>,
-{
-    fn update(&mut self, ctx: &Context, epi_frame: &mut Frame) {
-        if let Some(image) = (self.image_stream)() {
-            self.latest_image = Some(image);
-        }
-
-        SidePanel::left("Configure").show(ctx, |sidebar| {
-            let changed_configuration = self
-                .image_processing_configuration
-                .read()
-                .unwrap()
-                .draw(sidebar);
-            if let Some(configuration) = changed_configuration {
-                self.image_processing_configuration
-                    .write()
-                    .unwrap()
-                    .clone_from(&configuration);
-            }
-        });
-
-        CentralPanel::default().show(ctx, |image_draw_area| {
-            if let Some(ref image) = self.latest_image {
-                let texture = image_draw_area.ctx().load_texture(
-                    "frame",
-                    image.clone(),
-                    TextureOptions::LINEAR,
-                );
-                image_draw_area.image(&texture, image_draw_area.available_size());
-            } else {
-                image_draw_area.colored_label(
-                    image_draw_area.visuals().error_fg_color,
-                    "no image received from processing pipeline",
-                );
-            }
-        });
-
-        if ctx.input(|i| {
-            [Key::Q, Key::Escape]
-                .into_iter()
-                .any(|key| i.key_pressed(key))
-        }) {
-            epi_frame.close();
-        }
-
-        ctx.request_repaint();
-    }
-}
-
 #[derive(Debug, Clone)]
 struct ImageProcessingConfiguration {
     blur: bool,
@@ -163,6 +87,7 @@ impl ImageProcessingConfiguration {
         let mat = to_mat(image).expect("RgbImage should be convertible to Mat");
 
         // Do processing here
+
         let mat = if self.blur {
             let mut out = Mat::default();
             imgproc::gaussian_blur(
@@ -217,4 +142,80 @@ fn main() {
     let app = MyApp::new(stream, processor);
 
     eframe::run_native("lab 00", options, Box::new(|_cc| Box::new(app))).unwrap();
+}
+
+struct MyApp<ImageStreamFn>
+where
+    ImageStreamFn: FnMut() -> Option<ImageData>,
+{
+    image_stream: ImageStreamFn,
+    latest_image: Option<ImageData>,
+    image_processing_configuration: Arc<RwLock<ImageProcessingConfiguration>>,
+}
+
+impl<ImageStreamFn> MyApp<ImageStreamFn>
+where
+    ImageStreamFn: FnMut() -> Option<ImageData>,
+{
+    fn new(
+        image_stream: ImageStreamFn,
+        image_processing_configuration: Arc<RwLock<ImageProcessingConfiguration>>,
+    ) -> Self {
+        Self {
+            image_stream,
+            latest_image: None,
+            image_processing_configuration,
+        }
+    }
+}
+
+impl<ImageStreamFn> App for MyApp<ImageStreamFn>
+where
+    ImageStreamFn: FnMut() -> Option<ImageData>,
+{
+    fn update(&mut self, ctx: &Context, epi_frame: &mut Frame) {
+        if let Some(image) = (self.image_stream)() {
+            self.latest_image = Some(image);
+        }
+
+        SidePanel::left("Configure").show(ctx, |sidebar| {
+            let changed_configuration = self
+                .image_processing_configuration
+                .read()
+                .unwrap()
+                .draw(sidebar);
+            if let Some(configuration) = changed_configuration {
+                self.image_processing_configuration
+                    .write()
+                    .unwrap()
+                    .clone_from(&configuration);
+            }
+        });
+
+        CentralPanel::default().show(ctx, |image_draw_area| {
+            if let Some(ref image) = self.latest_image {
+                let texture = image_draw_area.ctx().load_texture(
+                    "frame",
+                    image.clone(),
+                    TextureOptions::LINEAR,
+                );
+                image_draw_area.image(&texture, image_draw_area.available_size());
+            } else {
+                image_draw_area.colored_label(
+                    image_draw_area.visuals().error_fg_color,
+                    "no image received from processing pipeline",
+                );
+            }
+        });
+
+        if ctx.input(|i| {
+            [Key::Q, Key::Escape]
+                .into_iter()
+                .any(|key| i.key_pressed(key))
+        }) {
+            epi_frame.close();
+        }
+
+        ctx.request_repaint();
+    }
 }
