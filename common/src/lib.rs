@@ -110,3 +110,73 @@ pub mod convert {
         };
     }
 }
+
+pub mod util {
+    use opencv::{
+        core::{self, MatExprTraitConst, MatTraitConst, MatTraitConstManual},
+        imgproc,
+    };
+    use std::collections::VecDeque;
+
+    pub struct MatMovingAverage {
+        size: usize,
+        buffer: VecDeque<::opencv::core::Mat>,
+    }
+
+    impl MatMovingAverage {
+        #[must_use]
+        pub fn new(size: usize) -> Self {
+            Self {
+                size,
+                buffer: VecDeque::with_capacity(size),
+            }
+        }
+
+        pub fn push(&mut self, mat: ::opencv::core::Mat) {
+            if self.buffer.len() == self.size {
+                self.buffer.pop_front();
+            }
+
+            self.buffer.push_back(mat);
+        }
+
+        #[must_use]
+        pub fn average(&self) -> Option<::opencv::core::Mat> {
+            if self.buffer.is_empty() {
+                return None;
+            }
+            let an_image = self
+                .buffer
+                .get(0)
+                .expect("should be an element at index 0 after checking emptiness prior");
+            let size = an_image
+                .size()
+                .expect("should be able to check size on image");
+            let depth = an_image.typ() & core::Mat_DEPTH_MASK;
+            let mut out = ::opencv::core::Mat::zeros(size.height, size.width, core::CV_32FC3)
+                .expect("should be able to create matrix")
+                .to_mat()
+                .expect("should be able to convert to matrix");
+            for img in &self.buffer {
+                imgproc::accumulate(img, &mut out, &core::no_array())
+                    .expect("should be able to accumulate");
+            }
+
+            #[allow(clippy::cast_precision_loss)]
+            let mut out = (out / (self.buffer.len() as f64))
+                .into_result()
+                .expect("should be able to divide")
+                .to_mat()
+                .expect("should be able to convert to matrix");
+
+            out = {
+                let mut res = ::opencv::core::Mat::default();
+                out.convert_to(&mut res, depth, 1., 0.)
+                    .expect("should be able to convert");
+                res
+            };
+
+            Some(out)
+        }
+    }
+}
